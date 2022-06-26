@@ -6,6 +6,7 @@ import pandas as pd
 import query_utils as qu
 from opensearchpy import RequestError
 import os
+import json
 
 # from importlib import reload
 
@@ -233,14 +234,13 @@ class DataPrepper:
         ##### Step Extract LTR Logged Features:
         # IMPLEMENT_START --
         no_results = set()
+        feature_names = self.get_feature_names()
         feature_results = {
             "doc_id": [],
             "query_id": [],
             "sku": [],
             "name_match": []
-        }
-
-        #, dict.fromkeys(self.feature_names(), [])}
+        } | {fn: [] for fn in feature_names}
 
         try:
             response = self.opensearch.search(body=log_query, index=self.index_name)
@@ -257,20 +257,22 @@ class DataPrepper:
                     feature_results["doc_id"].append(hit["_id"])  # capture the doc id so we can join later
                     feature_results["query_id"].append(query_id)
                     feature_results["sku"].append(hit["_source"]["sku"][0])  
-                    
+                    feature_vals_dict = {}
                     try:
-
                         feature_vals = hit['fields']['_ltrlog'][0]['log_entry_01']
                         for (idx, feature) in enumerate(feature_vals):
-                            if feature["name"] == "name_match" and "value" in feature:
-                                feature_results["name_match"].append(feature["value"])
-                            else:
-                                feature_results["name_match"].append(0.0)
+                            if "value" in feature:
+                                feature_vals_dict[feature["name"]] = feature["value"]
+                        
+
                     except KeyError:
                         print("No features exists query: %s" % key)
-                        print(str(KeyError))
-                        print(hit['fields']['_ltrlog'])
-                        feature_results["name_match"].append(0.0)
+
+                    for fn in feature_names:
+                        if fn in feature_vals_dict:
+                            feature_results[fn].append(feature_vals_dict[fn])
+                        else:
+                            feature_results[fn].append(0.0)
             else:
                 if response and (response['hits']['hits'] == None or len(response['hits']['hits']) == 0):
                     print("No results for query: %s" % key)
@@ -280,11 +282,14 @@ class DataPrepper:
                     print("Invalid response for query %s" % query_obj)
         # print("Zero results queries: %s" % no_results)
        
-     
-        # print("\nZZZZ\n", feature_results, "\nZZZZ\n")
         frame = pd.DataFrame(feature_results)
-        return frame.astype({'doc_id': 'int64', 'query_id': 'int64', 'sku': 'int64', 'name_match': 'float64'})
+        return frame.astype({'doc_id': 'int64', 'query_id': 'int64', 'sku': 'int64'} | dict.fromkeys(feature_names, 'float64'))
         # IMPLEMENT_END
+
+    def get_feature_names(self):
+        with open('week1/conf/ltr_featureset.json') as f:
+            j = json.load(f)
+            return list(map(lambda x: str(x["name"]), j['featureset']['features']))
 
     # Can try out normalizing data, but for XGb, you really don't have to since it is just finding splits
     def normalize_data(self, ranks_features_df, feature_set, normalize_type_map):
