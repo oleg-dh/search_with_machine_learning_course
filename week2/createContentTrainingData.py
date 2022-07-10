@@ -42,30 +42,6 @@ general.add_argument("--sample_rate", default=1.0, type=float, help="The rate at
 # IMPLEMENT: Setting min_products removes infrequent categories and makes the classifier's task easier.
 general.add_argument("--min_products", default=0, type=int, help="The minimum number of products per category (default is 0).")
 
-# todo: 1 - dry-run
-
-# data cleaning
-# lemmatizer
-# drop 500 results
-
-# # # import these modules
-# from nltk.stem import WordNetLemmatizer
-  
-# lemmatizer = WordNetLemmatizer()
-  
-# print("rocks :", lemmatizer.lemmatize("rocks"))
-# print("corpora :", lemmatizer.lemmatize("corpora"))
-  
-# # a denotes adjective in "pos"
-# print("better :", lemmatizer.lemmatize("better", pos ="a"))
-
-# synonyms - best practices
-# wordnet = language file but old
-# look at no results cases and see if it's a synonyms
-# https://dtunkelang.medium.com/real-talk-about-synonyms-and-search-bb5cf41a8741
-# thesarus - filter
-# look at query rewrites for synoynms
-# check frequent logs vs low recall results
 
 args = parser.parse_args()
 output_file = args.output
