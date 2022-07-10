@@ -223,3 +223,13 @@ tote 0.559197
 sleeve 0.550413
 small 0.546948
 ```
+
+# Level 3 - Synonyms in Search
+
+```
+query      control  test
+earbuds    2006     2512
+nespresso  8        8
+dslr       2837     10000
+nintendo   4568     4835
+```
