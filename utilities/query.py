@@ -6,16 +6,30 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import argparse
 import json
 import os
+import re
 from getpass import getpass
 from urllib.parse import urljoin
 import pandas as pd
 import fileinput
 import logging
+import fasttext
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(levelname)s:%(message)s')
+
+category_model = fasttext.load_model('/workspace/datasets/category_classifier.bin')
+
+def normalize_query(query):
+    # lowercase
+    query = query.lower()
+    query = re.sub(r'[^A-Za-z0-9_ ]+', '', query)
+    query = re.sub("\s\s+" , " ", query)
+    
+    # query = " ".join(map(lambda t: stemmer.stem(t), query.split()))
+
+    return query
 
 # expects clicks and impressions to be in the row
 def create_prior_queries_from_group(
@@ -186,19 +200,44 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
     return query_obj
 
 
-def search(client, user_query, index="bbuy_products", sort="_score", sortDir="desc", synonyms=False):
+def search(client, user_query, index="bbuy_products", sort="_score", sortDir="desc", synonyms=False, cats=[]):
     #### W3: classify the query
     #### W3: create filters and boosts
+    filters = None
+    if len(cats) > 0:
+        filters = [ 
+            { 
+                "terms": {
+                    "categoryPathIds": cats
+                }
+            }
+        ]
+
+    print(filters)
+
     # Note: you may also want to modify the `create_query` method above
     name_field = "name.synonyms" if synonyms else "name"
 
-    query_obj = create_query(user_query, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"], name_field=name_field)
+    query_obj = create_query(user_query, click_prior_query=None, filters=filters, sort=sort, sortDir=sortDir, source=["name", "shortDescription"], name_field=name_field)
     logging.info(query_obj)
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
         hits = response['hits']['hits']
         print(json.dumps(response, indent=2))
 
+def predict_categories(query, threshold=0.5):
+    res = []
+    categories, probabilities = category_model.predict(normalize_query(query), k=5)
+    
+    score = 0.0
+    for category, probability in zip(categories, probabilities):
+        if (score >= threshold):
+            break
+
+        res.append(category.removeprefix('__label__'))
+        score = score + probability
+
+    return res
 
 if __name__ == "__main__":
     host = 'localhost'
@@ -251,7 +290,9 @@ if __name__ == "__main__":
         if query == "Exit":
             break
 
-        search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms)
+        cats = predict_categories(query)
+
+        search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms, cats=cats)
 
         print(query_prompt)
 

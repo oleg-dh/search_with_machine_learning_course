@@ -63,6 +63,9 @@ df['query'] = df['query'].apply(normalize_query)
 # Adopt Ilkcan Keles iterative solution
 # Get category count by grouping by category.
 category_counts_df = df.groupby('category').size().reset_index(name='cat_count')
+
+print("Total categories", len(category_counts_df))
+
 # Merge with parent dataframe
 df_merged = df.merge(category_counts_df, how='left', on='category').merge(parents_df, how='left', on='category')
 # Apply threshold to category counts
