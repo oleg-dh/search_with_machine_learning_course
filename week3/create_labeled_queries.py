@@ -1,5 +1,6 @@
 import os
 import argparse
+import re
 import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
@@ -8,6 +9,16 @@ import csv
 # Useful if you want to perform stemming.
 import nltk
 stemmer = nltk.stem.PorterStemmer()
+
+def normalize_query(query):
+    # lowercase
+    query = query.lower()
+    query = re.sub(r'[^A-Za-z0-9_ ]+', '', query)
+    query = re.sub("\s\s+" , " ", query)
+    
+    # query = " ".join(map(lambda t: stemmer.stem(t), query.split()))
+
+    return query
 
 categories_file_name = r'/workspace/datasets/product_data/categories/categories_0001_abcat0010000_to_pcmcat99300050000.xml'
 
@@ -22,8 +33,7 @@ general.add_argument("--output", default=output_file_name, help="the file to out
 args = parser.parse_args()
 output_file_name = args.output
 
-if args.min_queries:
-    min_queries = int(args.min_queries)
+min_queries = int(args.min_queries) if args.min_queries else 1
 
 # The root category, named Best Buy with id cat00000, doesn't have a parent.
 root_category_id = 'cat00000'
@@ -47,10 +57,31 @@ parents_df = pd.DataFrame(list(zip(categories, parents)), columns =['category', 
 # Read the training data into pandas, only keeping queries with non-root categories in our category tree.
 df = pd.read_csv(queries_file_name)[['category', 'query']]
 df = df[df['category'].isin(categories)]
-
-# IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+df['query'] = df['query'].apply(normalize_query)
 
 # IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+# Adopt Ilkcan Keles iterative solution
+# Get category count by grouping by category.
+category_counts_df = df.groupby('category').size().reset_index(name='cat_count')
+# Merge with parent dataframe
+df_merged = df.merge(category_counts_df, how='left', on='category').merge(parents_df, how='left', on='category')
+# Apply threshold to category counts
+num_of_subthreshold_categories = len(category_counts_df[category_counts_df.cat_count < min_queries])
+print("Number of sub-threshold categories: " + str(num_of_subthreshold_categories))
+# Rollup categories that is under the threshold.
+while num_of_subthreshold_categories > 0:
+    # Place parent category in the category field
+    df_merged.loc[df_merged.cat_count < min_queries, 'category'] = df_merged['parent']
+    # Get category for query
+    df = df_merged[['category', 'query']]
+    df = df[df.category.isin(categories)]
+    # Update category counts
+    category_counts_df = df.groupby('category').size().reset_index(name='cat_count')
+    df_merged = df.merge(category_counts_df, how='left', on='category').merge(parents_df, how='left', on='category')
+    # Update and then check threshold
+    num_of_subthreshold_categories = len(category_counts_df[category_counts_df.cat_count < min_queries])
+    print("Number of sub-threshold categories: " + str(num_of_subthreshold_categories))
+
 
 # Create labels in fastText format.
 df['label'] = '__label__' + df['category']
